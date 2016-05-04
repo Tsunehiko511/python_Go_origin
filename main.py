@@ -1,68 +1,37 @@
 # -*- coding:utf-8 -*-
-# データ構造
+import random
+# データ
 KOMI = 6.5
 BOARD_SIZE = 9				# 碁盤の大きさ
 WIDTH_SIZE = BOARD_SIZE + 2 # 盤外を含めた碁盤の横幅 11
 BOARD_MAX  = WIDTH_SIZE * WIDTH_SIZE # 121
+# 盤上の種類
+NONE,BLACK,WHITE,WALL = 0,1,2,3
+STONE = ["・","🔴 ","⚪️ "]
+# 石が打てたかどうか
+ERROR = -1
+SUCCESS = 0
 
-WALL = 3	# 盤外
-
-# 碁盤
-'''
-board = [
-		3,3,3,3,3,3,3,3,3,3,3,
-		3,0,0,0,0,0,0,0,0,0,3,
-		3,0,0,0,0,2,0,0,0,0,3,
-		3,0,0,0,0,0,0,0,1,0,3,
-		3,0,0,0,0,0,0,0,0,0,3,
-		3,0,0,0,0,0,0,0,0,0,3,
-		3,0,0,0,0,0,0,0,0,0,3,
-		3,0,0,0,0,0,0,0,0,0,3,
-		3,0,0,0,0,0,0,0,0,0,3,
-		3,0,0,0,0,0,0,0,0,0,3,
-		3,3,3,3,3,3,3,3,3,3,3,
-		]
-'''
-board = [0 for i in range(0,BOARD_MAX)]
-# 一行目を盤外にする
-for i in range(0,WIDTH_SIZE):
-	u_wall = i
-	b_wall = BOARD_MAX - WIDTH_SIZE + i
-	board[u_wall] = WALL
-	board[b_wall] = WALL
-for i in range(1,WIDTH_SIZE):
-	l_wall = i*WIDTH_SIZE
-	r_wall = l_wall+BOARD_SIZE+1
-	board[l_wall] = WALL
-	board[r_wall] = WALL
-
-
-dir4 = {-1,1,+WIDTH_SIZE,-WIDTH_SIZE} # 右左上下への移動
-hama = [0,0]
-kifu = [0 for i in range(0,1000)]
-ko_z = 0
-all_playouts = 0
 
 # (x,y)を１次元配列表記に変換 ただしx,y:0〜8
 def get_z(x,y):
 	return (x+1) + (y+1)*WIDTH_SIZE
-# 上の逆
-def get_x_y(z):
-	return (z%WIDTH_SIZE,z/WIDTH_SIZE)
 
-# 一次元配列を(x,y)に変換
-def get81(z):
-	if z==0:
-		return 0
-	y = z/WIDTH_SIZE
-	x = z- y*WIDTH_SIZE
-	return x*10+y
+# 色の反転
+def flip_color(color):
+	return 3 - color
 
-def flip_color(col):
-	clo = 3 - col
+# 碁盤に石を打つ
+def move(board,position,color):
+	# 空でなけれエラーを返す
+	if board[position] != NONE:
+		return ERROR
+	# 石を打つ
+	board[position] = color
+	return SUCCESS
 
-storn = ["・","🔴 ","⚪️ "]
-def print_board():
+# 盤上の描画
+def print_board(board):
 	print " ",
 	for x in range(1,BOARD_SIZE+1):
 		print "%d " %x,
@@ -70,10 +39,50 @@ def print_board():
 	for y in range(0,BOARD_SIZE):
 		print y+1,
 		for x in range(0,BOARD_SIZE):
-			print storn[board[get_z(x,y)]],
+			print STONE[board[get_z(x,y)]],
 		print ""
 
-print_board()
+# 空の場所の配列を取得
+def getNonePosition(board):
+	array = []
+	for i in range(0,BOARD_MAX):
+		if board[i] != NONE:
+			continue
+		array.append(i)
+	return array
+
+def main():
+	# 碁盤
+	board = [0 for i in range(0,BOARD_MAX)]
+	# 盤外の作成
+	for i in range(0,WIDTH_SIZE):
+		board[i] = WALL
+		board[BOARD_MAX - WIDTH_SIZE + i] = WALL
+	for i in range(1,WIDTH_SIZE):
+		board[i*WIDTH_SIZE] = WALL
+		board[i*WIDTH_SIZE+BOARD_SIZE+1] = WALL
+
+	# 先手を黒
+	color = 1
+
+	# 試合開始
+	while(1):
+		print_board(board)						# 盤上の描画
+		# 空に石を打つ
+		nonePosition = getNonePosition(board)
+		l = len(nonePosition)
+		if l == 0:
+			break
+		z = nonePosition[random.randint(0,l-1)]
+		move(board,z,color)
+		# 交代
+		color = flip_color(color)
+
+if __name__ == '__main__':
+	main()
+
+
+
 
 
 
