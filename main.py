@@ -14,6 +14,8 @@ def draw(board):
 	print " "," ".join("%2d"%x for x in range(1,BOARD_SIZE+1))
 	for y in range(1,BOARD_SIZE+1):
 		print "%2d"%y, " ".join(STONE[data] for data in board[y][1:-1])
+
+#石を打つ
 def move(board,z,color):
 	board[z[0]][z[1]] = color
 
@@ -31,7 +33,7 @@ def main():
 	board = [[NONE]*WIDTH_SIZE for i in range(WIDTH_SIZE)]
 	# 枠の作成
 	for i in range(WIDTH_SIZE):
-		board[0][i] = board[-1][i] = board[i][0] = board[-1][i] = WALL
+		board[0][i] = board[-1][i] = board[i][0] = board[i][-1] = WALL
 	# 先手
 	color = BLACK
 
