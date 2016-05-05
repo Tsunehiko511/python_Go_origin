@@ -31,7 +31,7 @@ class Board(object):
 
 	# 碁盤描画
 	def draw(self):
-		print " ", " ".join("%2d"%x for x in range(1,self.size-1))
+		print "  ", " ".join("%2d"%x for x in range(1,self.size-1))
 		for y in range(1,self.size-1):
 			print "%2d"%y, " ".join(VISUAL[data] for data in self.data[y][1:-1])
 
