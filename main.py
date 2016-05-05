@@ -1,55 +1,55 @@
 # -*- coding:utf-8 -*-
 import random
 
-# データ
+# 碁盤
 BOARD_SIZE = 9				# 碁盤の大きさ
-WIDTH_SIZE = BOARD_SIZE + 2 # 盤外を含めた碁盤の横幅 11
 
 # 盤上の種類
 NONE,BLACK,WHITE,WALL = 0,1,2,3
-STONE = ("・","🔴 ","⚪️ ")
+VISUAL = ("・","🔴 ","⚪️ ", "　")
 
-# 碁盤描画
-def draw(board):
-	print " "," ".join("%2d"%x for x in range(1,BOARD_SIZE+1))
-	for y in range(1,BOARD_SIZE+1):
-		print "%2d"%y, " ".join(STONE[data] for data in board[y][1:-1])
+class Board(object):
+	# 碁盤作成
+	def __init__(self,size):
+		self.size = size + 2 	# 上下左右に外枠を含めた碁盤
+		self.data = data = [[NONE]*self.size for i in range(self.size)]
+		# 外枠の作成
+		for i in range(self.size):
+			data[0][i] = data[-1][i] = data[i][0] = data[i][-1] = WALL
 
-#石を打つ
-def move(board,z,color):
-	board[z[0]][z[1]] = color
+	# 石を打つ
+	def move(self,position,stone):
+		y,x = position
+		self.data[y][x] = stone
 
-# 盤上の空の場所を配列で取得
-def getNonePosition(board):
-	array = []
-	for y in range(1,BOARD_SIZE+1):
-		for x in range(1,BOARD_SIZE+1):
-			if board[y][x] == NONE:
-				array.append([y,x])
-	return array
+	# 盤上の空の場所を配列で取得
+	def getNonePositions(self):
+		return [(y,x)
+				for y in range(1,self.size-1)
+				for x in range(1,self.size-1)
+				if self.data[y][x] == NONE]
+
+	# 碁盤描画
+	def draw(self):
+		print " ", " ".join("%2d"%x for x in range(1,self.size-1))
+		for y in range(1,self.size-1):
+			print "%2d"%y, " ".join(VISUAL[data] for data in self.data[y][1:-1])
 
 def main():
 	# 碁盤
-	board = [[NONE]*WIDTH_SIZE for i in range(WIDTH_SIZE)]
-	# 枠の作成
-	for i in range(WIDTH_SIZE):
-		board[0][i] = board[-1][i] = board[i][0] = board[i][-1] = WALL
+	board = Board(BOARD_SIZE)
+
 	# 先手
 	color = BLACK
 
 	# ゲーム開始
-	while(1):
-		# 候補を探す
-		preMove = getNonePosition(board)
-		l = len(preMove)
-		if l == 0:
-			break
-		z = preMove[random.randint(0,l-1)]	# ランダム打ち
-		
-		move(board,z,color)		# 打つ
-		print STONE[color],z	# 描画
-		draw(board)
-		color = 3 - color		# 色を交代
+	positions = board.getNonePositions()
+	random.shuffle(positions)
+	for position in positions:
+		board.move(position,color)
+		print VISUAL[color], position
+		board.draw()
+		color = WHITE if color == BLACK else BLACK
 
 if __name__ == '__main__':
 	main()
