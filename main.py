@@ -10,12 +10,12 @@ BOARD_MAX  = WIDTH_SIZE * WIDTH_SIZE # 121
 NONE,BLACK,WHITE,WALL = 0,1,2,3
 STONE = ["・","🔴 ","⚪️ "]
 # 石が打てたかどうか
-SUCCESS = 0
-KILL 	= 1
-KO 		= 2
-ME 		= 3
-MISS 	= 4
-PASS 	= 5
+SUCCESS = 0 		# 打てる
+KILL 	= 1 		# 自殺手
+KO 		= 2 		# 劫
+ME 		= 3 		# 眼
+MISS 	= 4 		# すでに石がある
+PASS 	= 5 		# パス
 
 DIR4 = [-1,1,-WIDTH_SIZE,+WIDTH_SIZE]
 
@@ -37,6 +37,7 @@ def count_stone_liberty(z,board,color):
 
 	return stone_liberty
 
+# 再帰関数でつながっている石を調べる
 def count_stone_liberty_sub(z,board,color,check_board,stone_liberty):
 	check_board[z] = 1
 	stone_liberty[0] += 1
@@ -50,6 +51,7 @@ def count_stone_liberty_sub(z,board,color,check_board,stone_liberty):
 		if board[zd] == color:
 			count_stone_liberty_sub(zd,board,color,check_board,stone_liberty) 
 
+# 石を取る
 def capture(z,board,color):
 	board[z] = NONE
 	for d in DIR4:
@@ -131,6 +133,7 @@ def move(board,position,color,ko_z):
 	
 	return SUCCESS
 
+# デバック用
 def error_move(err):
 	if err == KILL:
 		print "自殺手"
@@ -160,6 +163,7 @@ def print_board(board):
 def getSuccessPosition(board,ko_z,color):
 	array = []
 
+	# 碁盤と劫をコピーし，違反とならない手を配列に入れていく
 	for i in range(0,BOARD_MAX):
 		board_copy = board[:]
 		ko_z_copy = ko_z[:]
@@ -189,25 +193,23 @@ def main():
 
 	# 対局開始
 	while(1):
-		# 空に石を打つ
+		# 順番に打っていき　反則じゃないものを取得
 		nonePosition = getSuccessPosition(board,ko_z,color)
 
-		l = len(nonePosition)
-		# 順番に打っていき　反則じゃないものを取得
-		if l == 0:
+		if len(nonePosition) == 0:
 			z = PASS
-			count_pass +=1
 		else:
 			count_pass = 0
-			z = nonePosition[random.randint(0,l-1)]
-			# print STONE[color],get_y_x(z),"打つ予定"
+			z = random.choice(nonePosition) #　nonePosition[random.randint(0,l-1)]
 
+		# 実際に打ってみる　　(人が打つ場合も想定しているので処理に重複がある)
 		err = move(board,z,color,ko_z)
 		if err != SUCCESS:
 			print STONE[color],
 			error_move(err)
 			if err==PASS:
 				color = flip_color(color)
+				count_pass +=1
 			if count_pass == 2:
 				print "対局終了"
 				break
