@@ -5,17 +5,23 @@ import copy
 # 碁盤
 BOARD_SIZE = 9				# 碁盤の大きさ
 
+KOMI = 6.5
+
 # 盤上の種類
 SPACE,BLACK,WHITE,WALL = 0,1,2,3
 VISUAL = ("・","🔴 ","⚪️ ", "　")
 DIR4 = (-1,0),(1,0),(0,-1),(0,1)
-
+# 石を打ったときの処理
 SUCCESS = 0 		# 打てる
 KILL 	= 1 		# 自殺手
 KO 		= 2 		# 劫
 ME 		= 3 		# 眼
 MISS 	= 4 		# すでに石がある
 PASS 	= 5 		# パス
+
+# 戦略
+RANDOM = 1
+
 
 ERROR_MESSAGE = {KILL:	"自殺手",
 				 KO: 	"劫",
@@ -80,6 +86,12 @@ class Player(object):
 	def __init__(self,color):
 		self.color = color
 		self.un_color = WHITE if color == BLACK else BLACK
+
+	# 戦術を選択
+	def tactics(self,choice,positions):
+		if choice == RANDOM:
+			return random.choice(positions)
+
 
 	# 相手の石を取る
 	def capture(self,board, position):
@@ -168,6 +180,49 @@ class Player(object):
 				]
 
 
+# 終局のスコアを計算 1:黒の勝ち -1:白勝ち　　AIは空点があれば打つので空点の4方向を調べればよい
+def score_counter(turn_color,board):
+	score = 0
+	# 盤上の[空点,黒石，白石]の数を取得
+	kind = [0,0,0]
+	for y in xrange(1,BOARD_SIZE+1):
+		for x in xrange(1,BOARD_SIZE+1):
+			col = board.data[y][x]
+			kind[col] += 1
+			# 空点は4方向の石の種類を調べる
+			if col != SPACE:
+				continue
+			# mk[0] 空，[1] 黒，[2] 白，[3] 盤外
+			mk = [0]*4
+			for (dy,dx) in DIR4:
+				mk[board.data[y+dy][x+dx]]+=1
+			# 黒だけに囲まれていれば黒地
+			if mk[1] > 0 and mk[2] == 0:
+				score += 1
+			# 白だけに囲まれていれば白地
+			if mk[2] > 0 and mk[1] == 0:
+				score -= 1
+	# 地+盤上の石数
+	score += kind[1] - kind[2]
+
+	# コミを考慮した結果
+	final_score = score - KOMI
+	win = 0
+	# turn_colorが黒で黒が勝っていれば1　負けていれば0
+	if final_score > 0 :
+		win = 1
+	# turn_colorが白で白が勝っていれば0　負けていれば-1
+	if turn_color == WHITE:
+		win = -1
+	return win
+
+def judge(score):
+	if score == 1:
+		print VISUAL[BLACK],"勝ち"
+	else:
+		print VISUAL[WHITE],"勝ち"
+
+
 def main():
 	# 碁盤
 	board = Board(BOARD_SIZE)
@@ -189,7 +244,7 @@ def main():
 			retult = PASS
 			passed += 1
 		else:
-			position = random.choice(positions)
+			position = player.tactics(RANDOM,positions)
 			retult = player.move(board,position)
 			passed = 0
 
@@ -204,6 +259,7 @@ def main():
 		player = turn[player]
 		time.sleep(0.1)
 	print "対局終了"
+	judge(score_counter(BLACK,board))
 
 if __name__ == '__main__':
 	main()
