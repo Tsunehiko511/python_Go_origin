@@ -10,7 +10,6 @@ KOMI = 6.5
 # 盤上の種類
 SPACE,BLACK,WHITE,WALL = 0,1,2,3
 VISUAL = ("・","🔴 ","⚪️ ", "　")
-DIR4 = (-1,0),(1,0),(0,-1),(0,1)
 # 石を打ったときの処理
 SUCCESS = 0 		# 打てる
 KILL 	= 1 		# 自殺手
@@ -22,6 +21,7 @@ PASS 	= 5 		# パス
 # 戦略
 RANDOM = 1
 MONTE_CARLO = 2
+RANDOM_ORIGIN = 3
 
 ERROR_MESSAGE = {KILL:	"自殺手",
 				 KO: 	"劫",
@@ -36,6 +36,29 @@ start = time.time()
 elapsed_time = time.time() - start
 print ("elapsed_time:{0}".format(elapsed_time)) + "[sec]"
 '''
+
+# (y,x) の周辺４方向の座標を返す
+def neighbors((y,x)):
+	return (y-1,x),(y+1,x),(y,x-1),(y,x+1)
+
+# position周辺の味方の連石とその呼吸点の数を返す　呼吸点=0になれば石が取られる
+def count_joined_liberty(board,position,color):
+	checked = []
+	def count_around(center,joined=0,liberty=0):
+		checked.append(center)
+		joined += 1
+		for neighbor in neighbors(center):
+			if neighbor in checked:
+				continue
+			data = board.get(neighbor)
+			if data == SPACE:
+				checked.append(neighbor)
+				liberty += 1
+			elif data == color:
+				joined,liberty = count_around(neighbor,joined,liberty)
+		return joined,liberty
+	return count_around(position)
+
 
 # 碁盤　
 class Board(object):
@@ -67,57 +90,105 @@ class Board(object):
 			print "%2d"%y, " ".join(VISUAL[data] for data in self.data[y][1:-1])
 
 	# 盤上の空の場所を配列で取得
-	def getNonePositions(self):
+	def getSpacePositions(self):
 		return [(y, x)
 				for y in range(1, self.size-1)
 				for x in range(1, self.size-1)
 				if self.data[y][x] == SPACE]
 
 
-class JoinedLibertyCounter(object):
-	def __init__(self,board):
-		self.board = board
+# 戦術を選択
+def tactics(strategy):
+	
+	def playout(color,board):
+		player1 = Player(color,RANDOM)
+		player2 = Player(player1.un_color,RANDOM)
+		turn = {player1:player2,player2:player1}
+		player = player1
+		passed = 0
+		while passed < 2:
+			result = player.play(board)
+			passed = 0 if result == SUCCESS else passed + 1
+			player = turn[player]
+		return scoring(board)
 
-	def count(self,position,stone):
-		return self.count_sub(position,stone,[])
+	# 原始モンテカルロ囲碁
+	def monte_carlo(player,board):
+		monte_start = time.time()
 
-	def  count_sub(self,position,stone,checked,joined=0,liberty=0):
-		checked.append(position)
-		joined += 1
-		y,x = position
-		for dy,dx in DIR4:
-			adjacent = (y+dy,x+dx)
-			if adjacent in checked:
+		TRY_GAMES = 5
+		try_total = 0
+		best_winner = -1
+		best_position = None
+
+		# すべての手に対して１手打ってみる
+		thinking_board = None
+		spaces = board.getSpacePositions()
+		random.shuffle(spaces)
+		for i, position in enumerate(spaces):
+			if thinking_board == None:
+				thinking_board = copy.deepcopy(board)
+			result = player.move(thinking_board, position)
+			if result != SUCCESS:
 				continue
-			if self.board.get(adjacent) == SPACE:
-				checked.append(adjacent)
-				liberty+=1
-			elif self.board.get(adjacent) == stone:
-				joined, liberty = self.count_sub(adjacent,stone,checked,joined,liberty)
-		return joined, liberty
+			win_count = 0
+			for n in range(TRY_GAMES):
+				score = playout(player.un_color,thinking_board)
+				if score[player.color] > score[player.un_color]:
+					win_count += 1
+
+			thinking_board = None
+			try_total += TRY_GAMES
+
+			# 勝数が多い高いものを選ぶ
+			if win_count > best_winner:
+				best_winner = win_count
+				best_position = position
+
+		monte_elapsed_time = time.time() - monte_start
+		print try_total
+		print "monte_elapsed_time:{0}[sec]".format(monte_elapsed_time)
+		if best_position:
+			player.position = best_position
+			return player.move(board,best_position)
+		return PASS
+
+	# 違反しない手をランダム選択
+	def random_choice(player,board):
+		spaces = board.getSpacePositions()
+		while  len(spaces) > 0:
+			position = random.choice(spaces)
+			result = player.move(board,position) # moveは違反場所に打たないので盤面は崩れない
+			if result == SUCCESS:
+				player.position = position
+				return SUCCESS
+			spaces.remove(position)
+		return PASS
+
+	if strategy == RANDOM:
+		return random_choice
+	if strategy == MONTE_CARLO:
+		return monte_carlo
+	return random_choice
+
 
 class Player(object):
 
-	def __init__(self,color,tact):
+	def __init__(self,color,strategy):
 		self.color = color
 		self.un_color = WHITE if color == BLACK else BLACK
-		self.tact = tact
+		self.tactics = tactics(strategy)
 
-	# 戦術を選択
-	def tactics(self,board,positions):
-		if self.tact == RANDOM:
-			return random_choice(self,board,positions)
-		if self.tact == MONTE_CARLO:
-			return monte_carlo(self,board,positions)
+	# selfが戦術に従い今の盤面で１手打った結果を返す
+	def play(self,board):
+		return self.tactics(self,board)
 
 	# 相手の石を取る
 	def capture(self,board, position):
 		board.remove(position)
-		y,x = position
-		for dy,dx in DIR4:
-			around = (y+dy,x+dx)
-			if board.get(around) == self.un_color:
-				self.capture(board,around)
+		for neighbor in neighbors(position):
+			if board.get(neighbor) == self.un_color:
+				self.capture(board,neighbor)
 	# 石を打つ
 	def move(self,board,position):
 		if position == (0,0):
@@ -138,11 +209,10 @@ class Player(object):
 		ko = None 		# 劫の候補
 
 		# 打つ前に4方向を調べる
-		joined_liberty = JoinedLibertyCounter(board)
-		y,x = position
-		for i, (dy,dx) in enumerate(DIR4): 	# enumerate:インデックスとともにループ
-			around = (y+dy,x+dx)
-			colors[i] = c = board.get(around)
+		#joined_liberty = JoinedLibertyCounter(board)
+
+		for i, neighbor in enumerate(neighbors(position)): 	# enumerate:インデックスとともにループ
+			colors[i] = c = board.get(neighbor)
 			if c == SPACE:
 				space += 1
 				continue
@@ -151,11 +221,11 @@ class Player(object):
 				continue
 
 			# 連石と呼吸点の数を数える
-			joineds[i],libertys[i] = joined_liberty.count(around,c)
+			joineds[i],libertys[i] = count_joined_liberty(board,neighbor,c)
 			# 相手の石が取れるなら，劫の可能性があるので保持
 			if c == self.un_color and libertys[i] == 1:
 				take_sum += joineds[i]
-				ko = around
+				ko = neighbor
 			# 味方の石があって呼吸点が2つ以上あるなら眼の可能性
 			if c == self.color and libertys[i] >= 2:
 				mikata_safe += 1
@@ -172,15 +242,15 @@ class Player(object):
 			return ME
 
 		# 石を取る
-		for i, (dy,dx) in enumerate(DIR4):
+		for i, neighbor in enumerate(neighbors(position)):
 			if colors[i] == self.un_color and libertys[i] == 1:
-				self.capture(board,(y+dy,x+dx))
+				self.capture(board,neighbor)
 
 		# 石を打つ
 		board.set(position,self.color)
 
 		# 劫を取った直後は相手が取り返せないようにする
-		joined,liberty = joined_liberty.count(position,self.color)
+		joined,liberty = count_joined_liberty(board,position,self.color)
 		if take_sum == 1 and joined == 1 and liberty == 1:
 			board.ko = ko 		# 碁盤に劫の目印をつけておく
 		else:
@@ -188,174 +258,55 @@ class Player(object):
 
 		return SUCCESS
 
-	# 置ける場所を配列で取得
-	def getSuccessPositions(self,board):
-		# 石を置ける場所を探すために，deepcopyした碁盤に石を置いて確認する
-		return [(y,x)
-				for y in xrange(1,board.size-1)
-				for x in xrange(1,board.size-1)
-				#if self.move(copy.deepcopy(board),(y,x)) == SUCCESS
-				if board.get((y,x)) == SPACE
-				and self.move(copy.deepcopy(board),(y,x)) == SUCCESS
-				]
-# turn_colorが打つところから終局まで打ち，勝敗を返す
-def playout(color,board,positions):
-	playout_start = time.time()
+# 盤上の[黒石，白石]の数を取得
+def counting(board):
 
-	turn_player = Player(color,RANDOM) 					# ターンプレイヤー
-	wait_player = Player(turn_player.un_color,RANDOM)	# 待機プレイヤー
-	turn  = {turn_player:wait_player, wait_player:turn_player}
-	board_copy = copy.deepcopy(board) 					# 試し打ち用ボード
-	start1 = time.time()
+	def stones():
+		for y in xrange(1,board.size-1):
+			for x in xrange(1,board.size-1):
+				data = board.get((y,x))
+				if data == BLACK or data == WHITE:
+					yield data
+				elif data == SPACE:
+					# 空点は4方向の石の種類を調べる
+					around = [0]*4
+					for neighbor in neighbors((y,x)):
+						around[board.get(neighbor)] += 1
+					# 黒だけに囲まれていれば黒地
+					if around[BLACK] > 0 and around[WHITE] == 0:
+						yield BLACK
+					# 白だけに囲まれていれば白地
+					if around[WHITE] > 0 and around[BLACK] == 0:
+						yield WHITE
 
-	# 空点取得　試し打ち候補
-	positions_copy = copy.deepcopy(positions) 			
-	# 先手
-	player = turn_player
-	# 対局開始
-	passed = 0
-
-	elapsed_time1 = time.time() - start1
-	
-	# print ("elapsed_time1:{0}".format(elapsed_time1)) + "[sec]"
-	start2 = time.time()
-
-	while passed < 2:
-		while True:
-			# 手がないならパス
-			if len(positions_copy) == 0:
-				result = PASS
-			else:
-				# 手があるなら取得する 
-				position = random.choice(positions_copy)
-				result = player.move(board_copy,position) 		# 石を打つ
-			if result == SUCCESS:
-				#print VISUAL[player.color],position
-				passed = 0
-				break
-			elif result == PASS:
-				#print VISUAL[player.color],ERROR_MESSAGE[result]
-				passed += 1
-				break
-			else:
-				positions_copy.remove(position) 			# 候補から外す
-				#print VISUAL[player.color],ERROR_MESSAGE[result],position
-		elapsed_time2 = time.time() - start2
-		#board_copy.draw()
-		# プレイヤー交代
-		player = turn[player]
-	# 終局
-	#time.sleep(3)
-	# 勝敗を返す
-	score = score_counter(turn_player.color,board_copy)
-	playout_elapsed_time = time.time() - playout_start
-	#print ("playout_elapsed_time:{0}".format(playout_elapsed_time)) + "[sec]"
-	#print ("elapsed_time2:{0}".format(elapsed_time2)) + "[sec]"
-	# time.sleep(0)
-	return score
-def random_choice(player,board,positions):
-	board_copy = copy.deepcopy(board)
-	positions_copy = copy.deepcopy(positions)
-	random.shuffle(positions_copy)
-	position = (0,0)
-	for p in positions_copy:
-		result = player.move(board_copy,p) 	# 石を打つ
-		if result == SUCCESS: 						# 違反したら次
-			position = p
-			break
-	return position
-
-def monte_carlo(player,board,positions):
-	monte_start = time.time()
-	playout_count = 0
-
-	TRY_GAMES = 30
-	best_value = -999
-	board_copy = copy.deepcopy(board)
-	positions_copy = copy.deepcopy(positions)
-
-	best_position = (0,0)
-	count = 0
-
-	random.shuffle(positions_copy)
-	# すべての手に対して1手打ってみる
-	for position in positions_copy:
-		win_sum = 0
-		result = player.move(board_copy,position) 	# 石を打つ
-		positions_copy.remove(position) 			# 候補から外す
-		if result != SUCCESS: 						# 違反したら次
-			continue
-
-		# (相手の手から)playoutをTRY_GAMES回繰り返す
-		for i in range(TRY_GAMES):
-			win_sum -= playout(player.un_color,board_copy,positions_copy)
-			count += 1
-
-		# 勝率が最も高いものを選ぶ
-		win_rate = win_sum/TRY_GAMES
-		if win_rate > best_value:
-			best_value = win_rate
-			best_position = position
-	
-	monte_elapsed_time = time.time() - monte_start
-	print count
-	print ("monte_elapsed_time:{0}".format(monte_elapsed_time)) + "[sec]"
-	#time.sleep(2)
-	return best_position
+	count = {BLACK:0, WHITE:0}
+	for stone in stones():
+		count[stone] += 1
+	return count
 
 
-# 終局のスコアを計算 1:黒の勝ち -1:白勝ち　　AIは空点があれば打つので空点の4方向を調べればよい
-def score_counter(turn_color,board):
-	score = 0
-	# 盤上の[空点,黒石，白石]の数を取得
-	kind = [0,0,0]
-	for y in xrange(1,board.size-1):
-		for x in xrange(1,board.size-1):
-			col = board.data[y][x]
-			kind[col] += 1
-			# 空点は4方向の石の種類を調べる
-			if col != SPACE:
-				continue
-			# mk[0] 空，[1] 黒，[2] 白，[3] 盤外
-			mk = [0]*4
-			for (dy,dx) in DIR4:
-				mk[board.data[y+dy][x+dx]]+=1
-			# 黒だけに囲まれていれば黒地
-			if mk[1] > 0 and mk[2] == 0:
-				score += 1
-			# 白だけに囲まれていれば白地
-			if mk[2] > 0 and mk[1] == 0:
-				score -= 1
-	# 地+盤上の石数
-	score += kind[1] - kind[2]
-
-	# コミを考慮した結果
-	final_score = score - KOMI
-	win = 0
-	# turn_colorが黒で黒が勝っていれば1　負けていれば0
-	if final_score > 0 :
-		win = 1
-	# turn_colorが白で白が勝っていれば0　負けていれば-1
-	if turn_color == WHITE:
-		win = -1
-	return win
+# コミを考慮した結果
+def scoring(board):
+	KOMI = 6.5
+	count = counting(board)
+	return {BLACK: count[BLACK] - KOMI, WHITE: count[WHITE]}
 
 def judge(score):
-	if score == 1:
-		print VISUAL[BLACK],"勝ち"
-	else:
-		print VISUAL[WHITE],"勝ち"
-
+	black, white = score[BLACK], score[WHITE]
+	print VISUAL[BLACK], black
+	print VISUAL[WHITE], white
+	print VISUAL[BLACK if black > white else WHITE],"勝ち"
 
 def main():
 	main_start = time.time()
-
+	
 	# 碁盤
+	BOARD_SIZE = 9
 	board = Board(BOARD_SIZE)
 
 	# プレイヤー
-	black = Player(BLACK,MONTE_CARLO)
-	white = Player(WHITE,RANDOM)
+	black = Player(BLACK, MONTE_CARLO)
+	white = Player(WHITE, RANDOM)
 	turn  = {black:white, white:black}
 
 	# 先手
@@ -364,37 +315,24 @@ def main():
 	# 対局開始
 	passed = 0
 	while passed < 2:
-		# 盤上の空点を取得	
-		positions = board.getNonePositions()
-		if len(positions) == 0:		# 打てないならパス
-			result = PASS
-		elif player == black:
-			# 原始モンテカルロで打つ場所を取得
-			position = player.tactics(board,positions)
-			result = player.move(board,position) 	# 打ってみる
-		elif player == white:
-			# ランダムに打つ場所を取得
-			position = player.tactics(board,positions)
-			result = player.move(board,position) 	# 打ってみる
-
-		if result == SUCCESS: 			# 打てたら描画 選択終了
-			passed = 0
-			print VISUAL[player.color],position
+		# 打った結果を取得
+		result = player.play(board)
+		if result == SUCCESS:
+			# 成功したら描画
+			print VISUAL[player.color],player.position
 			board.draw()
 			print
-		elif result == PASS:
-			passed += 1
+			passed = 0
+		else:
+			# 失敗したら失敗表示
 			print VISUAL[player.color],ERROR_MESSAGE[result]
-		else: 							# 違反ならもう一度探す
-			print VISUAL[player.color],ERROR_MESSAGE[result],position
-			player = turn[player]
-		# プレイヤー交代
+			passed += 1
+
 		player = turn[player]
-		#time.sleep(0)
 
 	board.draw()
-	print "対局終了"	
-	judge(score_counter(BLACK,board))
+	print "対局開始"
+	judge(scoring(board))
 
 	main_elapsed_time = time.time() - main_start
 	print ("main_elapsed_time:{0}".format(main_elapsed_time)) + "[sec]"
